@@ -22,6 +22,3 @@ Quick start
         8. Check your terminal for a response and Django admin will show you if it was successful or not
         9. You could use call ``from SMS.sms_utils import SMS_Sender`` to get the SMS class and send sms using by the way ``SMS_Sender(phone_number, message).SendSmsOneContact()`` it returns a response
 
-
-![Img](https://github.com/firdavsDev/Django-SMS//blob/master/carbon.png?raw=true)
-

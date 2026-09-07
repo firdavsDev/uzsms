@@ -1,5 +1,5 @@
-from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
+from rest_framework import serializers
 
 
 class ValidatePhoneNumber(serializers.Serializer):
@@ -11,10 +11,10 @@ class ValidatePhoneNumber(serializers.Serializer):
         if len(phone_number) != 12:
             message = _(
                 "Phone number must have 12 characters and"
-                " format should be '998xxxxxxxxx'")
+                " format should be '998xxxxxxxxx'"
+            )
             self._errors.append(message)
 
         if self._errors:
             raise serializers.ValidationError(self._errors)
         return phone_number
-    
