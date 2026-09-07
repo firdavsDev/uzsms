@@ -9,7 +9,6 @@ class SmsLog(models.Model):
     class Meta:
         verbose_name = "Log"
         verbose_name_plural = "Logs"
-        # ordering = ["-id"]
 
     def __str__(self):
         return self.phone_number

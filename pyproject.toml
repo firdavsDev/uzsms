@@ -73,6 +73,3 @@ pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
-# The legacy `SMS` package is renamed/rewritten as `uzsms` in Task 2; it is
-# out of scope for this task and is excluded from linting until then.
-extend-exclude = ["SMS"]

@@ -1,4 +1,6 @@
 # Create your views here.
+from typing import ClassVar
+
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView, Response
 
@@ -7,7 +9,7 @@ from .sms_utils import SMS_Sender
 
 
 class SendSmsAPIView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes: ClassVar[list] = [AllowAny]
     serializer_class = ValidatePhoneNumber
 
     def post(self, request):

@@ -41,7 +41,7 @@ class SMS_Sender:
                 data=json.dumps(dt),
             )
 
-        except Exception as e:
+        except requests.RequestException as e:
             return f"Error: {e!s}"
 
     def create_sms_log(self, phone_number, message):

@@ -1,8 +1,4 @@
-"""Minimal Django settings for running the test suite.
-
-NOTE: INSTALLED_APPS names the package as it exists today, ``SMS``.
-It will be switched to ``uzsms`` in Task 2, once that package exists.
-"""
+"""Minimal Django settings for running the test suite."""
 
 SECRET_KEY = "dummy-secret-key-for-tests"
 
@@ -23,7 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "SMS",
+    "uzsms",
 ]
 
 MIDDLEWARE = [
