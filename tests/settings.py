@@ -6,6 +6,8 @@ DEBUG = True
 
 USE_TZ = True
 
+ROOT_URLCONF = "tests.urls"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
