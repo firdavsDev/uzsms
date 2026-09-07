@@ -5,6 +5,8 @@ module import time, so that importing ``uzsms`` never requires
 ``SMS_SETTINGS`` to be configured.
 """
 
+from __future__ import annotations
+
 from django.core.exceptions import ImproperlyConfigured
 
 

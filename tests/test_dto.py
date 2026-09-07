@@ -1,10 +1,10 @@
-"""Tests for the SmsMessage / SendResult value objects in uzsms.message."""
+"""Tests for the SmsMessage / SendResult value objects in uzsms.dto."""
 
 import dataclasses
 
 import pytest
 
-from uzsms.message import SendResult, SmsMessage
+from uzsms.dto import SendResult, SmsMessage
 
 
 def test_message_id_defaults_differ_across_instances():
