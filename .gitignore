@@ -1,0 +1,12 @@
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+*.sqlite3

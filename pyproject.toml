@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-sms-uz"
+version = "2.0.0"
+description = "SMS sending api for django"
+readme = "README.rst"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = [
+    "sms",
+    "django",
+    "api",
+    "sending",
+    "sending api",
+    "sending sms",
+    "sending sms api",
+    "sending sms api django",
+]
+authors = [
+    { name = "Boltayev Davronbek", email = "tarjimatv1@gmail.com" },
+]
+maintainers = [
+    { name = "Boburbek", email = "boburbek@gmail.com" },
+]
+classifiers = [
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "django>=4.2",
+    "requests>=2.28",
+]
+
+[project.urls]
+Homepage = "https://github.com/firdavsDev"
+
+[project.optional-dependencies]
+drf = ["djangorestframework>=3.14"]
+async = ["httpx>=0.24"]
+celery = ["celery>=5.2"]
+dev = [
+    "pytest",
+    "pytest-django",
+    "pytest-asyncio",
+    "responses",
+    "respx",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["uzsms*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+# The legacy `SMS` package is renamed/rewritten as `uzsms` in Task 2; it is
+# out of scope for this task and is excluded from linting until then.
+extend-exclude = ["SMS"]
