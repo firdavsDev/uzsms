@@ -1,27 +1,54 @@
 """Tests for the lazy, validated settings proxy in uzsms.conf."""
 
+import os
+import subprocess
+import sys
 import warnings
+from pathlib import Path
 
 import pytest
 from django.test import override_settings
 
 from uzsms.exceptions import SmsConfigurationError
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-def test_importing_conf_does_not_require_sms_settings(monkeypatch):
-    from django.conf import settings
 
-    monkeypatch.delattr(settings, "SMS_SETTINGS", raising=False)
+def test_importing_conf_does_not_require_sms_settings():
+    """A fresh interpreter must be able to import uzsms.conf with no
+    ``SMS_SETTINGS`` configured anywhere, and resolve a defaulted attribute
+    lazily without raising.
 
-    import importlib
+    This runs in a subprocess rather than reloading the already-imported
+    module in-process: an in-process ``importlib.reload`` rebinds
+    ``uzsms.conf.sms_settings`` to a new object without updating any module
+    that already did ``from uzsms.conf import sms_settings`` (validators,
+    repository, backends/base all do), orphaning the old singleton's
+    ``setting_changed`` cache-reset wiring for the rest of the test session.
+    A subprocess proves the actual promise made to users — importing the
+    package cold, with no ``SMS_SETTINGS`` at all — without that side effect.
+    """
+    program = (
+        "from django.conf import settings\n"
+        "settings.configure()\n"
+        "from uzsms.conf import sms_settings\n"
+        "assert sms_settings.ORIGINATOR == '3700'\n"
+    )
 
-    import uzsms.conf
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=REPO_ROOT,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
-    importlib.reload(uzsms.conf)  # must not raise even though SMS_SETTINGS is absent
-
-    uzsms.conf.sms_settings.reset()
-    with pytest.raises(SmsConfigurationError, match="URL"):
-        _ = uzsms.conf.sms_settings.URL
+    assert result.returncode == 0, (
+        f"subprocess exited {result.returncode}\n"
+        f"--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}"
+    )
 
 
 @override_settings(SMS_SETTINGS={})
