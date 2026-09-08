@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from uzsms.backends.base import BaseSmsBackend
+from uzsms.backends.base import BaseAsyncSmsBackend, BaseSmsBackend
 from uzsms.dto import SendResult, SmsMessage
 
 outbox: list[SmsMessage] = []
@@ -21,6 +21,17 @@ class LocMemBackend(BaseSmsBackend):
     """Appends each sent message to the module-level :data:`outbox`."""
 
     def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        results = []
+        for message in messages:
+            outbox.append(message)
+            results.append(SendResult(message=message, ok=True))
+        return results
+
+
+class AsyncLocMemBackend(BaseAsyncSmsBackend):
+    """Appends each sent message to the same module-level :data:`outbox`."""
+
+    async def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
         results = []
         for message in messages:
             outbox.append(message)

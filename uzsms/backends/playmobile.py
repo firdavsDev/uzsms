@@ -30,8 +30,9 @@ should set ``MAX_RETRIES = 0``.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 from django.core.signals import setting_changed
@@ -39,12 +40,21 @@ from django.dispatch import receiver
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-from uzsms.backends.base import BaseSmsBackend
+from uzsms.backends.base import BaseAsyncSmsBackend, BaseSmsBackend
 from uzsms.conf import sms_settings
 from uzsms.dto import SendResult, SmsMessage
-from uzsms.exceptions import SmsProviderError, SmsTransportError
+from uzsms.exceptions import SmsConfigurationError, SmsProviderError, SmsTransportError
+
+if TYPE_CHECKING:
+    import httpx
 
 _session: requests.Session | None = None
+_async_client: httpx.AsyncClient | None = None
+
+# Status codes the broker (and, for the sync backend, urllib3's Retry) treats
+# as transient — safe to retry given SmsMessage.message_id's replay-dedup
+# guarantee (see the module docstring).
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 def get_session() -> requests.Session:
@@ -79,10 +89,106 @@ def reset_session() -> None:
     _session = None
 
 
+def _import_httpx():
+    """Import and return the ``httpx`` module, or raise a clear config error.
+
+    ``httpx`` is an optional extra (``django-sms-uz[async]``); this is the
+    only place :class:`AsyncPlaymobileBackend` reaches for it, and it does
+    so lazily, on first use, so importing this module never requires
+    ``httpx`` to be installed.
+    """
+    try:
+        import httpx
+    except ImportError as exc:
+        raise SmsConfigurationError(
+            "httpx is required to use AsyncPlaymobileBackend. Install it "
+            "with `pip install django-sms-uz[async]`."
+        ) from exc
+    return httpx
+
+
+async def get_async_client() -> httpx.AsyncClient:
+    """Return a cached ``httpx.AsyncClient`` for the broker.
+
+    Mirrors :func:`get_session`: the client's connection pool limits come
+    from ``sms_settings.POOL_MAXSIZE`` and the same instance is reused
+    across calls until :func:`reset_async_client` clears it.
+    """
+    global _async_client
+    if _async_client is None:
+        httpx = _import_httpx()
+        limits = httpx.Limits(
+            max_connections=sms_settings.POOL_MAXSIZE,
+            max_keepalive_connections=sms_settings.POOL_MAXSIZE,
+        )
+        _async_client = httpx.AsyncClient(limits=limits)
+    return _async_client
+
+
+def reset_async_client() -> None:
+    """Discard the cached async client so the next call rebuilds it.
+
+    Does not ``aclose`` the discarded client: closing an ``httpx.AsyncClient``
+    is an async operation and this function is invoked from a synchronous
+    Django signal handler. The discarded client is left for garbage
+    collection, matching this package's YAGNI stance on connection teardown
+    for a backend most hosts open once per process.
+    """
+    global _async_client
+    _async_client = None
+
+
+async def _async_sleep_backoff(attempt: int) -> None:
+    """Sleep between retries, mirroring urllib3's exponential backoff.
+
+    ``attempt`` is the 1-based number of the retry about to be made.
+    Tests keep this fast the same way the sync suite keeps urllib3's
+    ``backoff_factor`` fast: by setting ``RETRY_BACKOFF = 0``, which makes
+    every backoff a zero-second (near-instant) ``asyncio.sleep``.
+    """
+    backoff = sms_settings.RETRY_BACKOFF * (2 ** (attempt - 1))
+    if backoff:
+        await asyncio.sleep(backoff)
+
+
+def _build_httpx_timeout(httpx) -> httpx.Timeout:
+    """Translate ``sms_settings.TIMEOUT`` into an ``httpx.Timeout``.
+
+    ``sms_settings.TIMEOUT`` follows requests' ``(connect, read)`` tuple
+    convention (see ``DEFAULTS`` in ``uzsms.conf``); ``httpx.Timeout`` has
+    no such tuple form, so a 2-tuple is mapped onto ``connect``/``read``
+    (and ``write``/``pool`` reuse ``connect``/``read`` respectively).
+    """
+    timeout = sms_settings.TIMEOUT
+    if isinstance(timeout, tuple):
+        connect, read = timeout
+        return httpx.Timeout(connect=connect, read=read, write=read, pool=connect)
+    return httpx.Timeout(timeout)
+
+
+def _build_failure(
+    messages: Sequence[SmsMessage],
+    error: SmsTransportError | SmsProviderError,
+    cause: BaseException | None,
+    *,
+    fail_silently: bool,
+) -> list[SendResult]:
+    status_code = getattr(error, "status_code", None)
+    if fail_silently:
+        return [
+            SendResult(message=m, ok=False, status_code=status_code, error=str(error))
+            for m in messages
+        ]
+    if cause is not None:
+        raise error from cause
+    raise error
+
+
 @receiver(setting_changed)
 def _reset_session_on_setting_changed(*, setting: str, **kwargs: Any) -> None:
     if setting == "SMS_SETTINGS":
         reset_session()
+        reset_async_client()
 
 
 def build_payload(messages: Sequence[SmsMessage]) -> dict:
@@ -107,7 +213,14 @@ def build_payload(messages: Sequence[SmsMessage]) -> dict:
     }
 
 
-def _parse_body(response: requests.Response) -> Any:
+def _parse_body(response: Any) -> Any:
+    """Parse a response body as JSON, falling back to raw text.
+
+    Works for both ``requests.Response`` and ``httpx.Response``: both
+    expose a ``.json()`` method (raising a ``ValueError`` subclass on
+    failure) and a ``.text`` property, so the sync and async backends can
+    share this one implementation.
+    """
     try:
         return response.json()
     except ValueError:
@@ -153,12 +266,75 @@ class PlaymobileBackend(BaseSmsBackend):
         error: SmsTransportError | SmsProviderError,
         cause: BaseException | None,
     ) -> list[SendResult]:
-        status_code = getattr(error, "status_code", None)
-        if self.fail_silently:
+        return _build_failure(messages, error, cause, fail_silently=self.fail_silently)
+
+
+class AsyncPlaymobileBackend(BaseAsyncSmsBackend):
+    """Sends messages to the Playmobile SMS broker over a cached ``httpx.AsyncClient``.
+
+    Mirrors :class:`PlaymobileBackend`: same timeout, same pool limits,
+    same error mapping, and the same replay-safe retry story (see the
+    module docstring) — but ``httpx`` has no built-in retry policy like
+    urllib3's ``Retry``, so the bounded retry loop over
+    ``_RETRYABLE_STATUS_CODES`` is implemented explicitly here, reusing
+    ``sms_settings.MAX_RETRIES``/``RETRY_BACKOFF``.
+    """
+
+    async def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        if not messages:
+            return []
+
+        httpx = _import_httpx()
+        payload = build_payload(messages)
+        client = await get_async_client()
+        auth = httpx.BasicAuth(sms_settings.LOGIN, sms_settings.PASSWORD)
+        timeout = _build_httpx_timeout(httpx)
+
+        attempt = 0
+        while True:
+            try:
+                response = await client.post(
+                    sms_settings.URL,
+                    json=payload,
+                    timeout=timeout,
+                    auth=auth,
+                )
+            except httpx.RequestError as exc:
+                if attempt >= sms_settings.MAX_RETRIES:
+                    return self._fail(messages, SmsTransportError(str(exc)), exc)
+                attempt += 1
+                await _async_sleep_backoff(attempt)
+                continue
+
+            if response.status_code in _RETRYABLE_STATUS_CODES:
+                if attempt < sms_settings.MAX_RETRIES:
+                    attempt += 1
+                    await _async_sleep_backoff(attempt)
+                    continue
+                error = SmsTransportError(
+                    f"Playmobile broker responded with status {response.status_code} "
+                    f"after {attempt} retries."
+                )
+                return self._fail(messages, error, None)
+
+            if response.status_code >= 400:
+                error = SmsProviderError(
+                    f"Playmobile broker responded with status {response.status_code}.",
+                    status_code=response.status_code,
+                    body=_parse_body(response),
+                )
+                return self._fail(messages, error, None)
+
+            body = _parse_body(response)
             return [
-                SendResult(message=m, ok=False, status_code=status_code, error=str(error))
-                for m in messages
+                SendResult(message=message, ok=True, status_code=response.status_code, raw=body)
+                for message in messages
             ]
-        if cause is not None:
-            raise error from cause
-        raise error
+
+    def _fail(
+        self,
+        messages: Sequence[SmsMessage],
+        error: SmsTransportError | SmsProviderError,
+        cause: BaseException | None,
+    ) -> list[SendResult]:
+        return _build_failure(messages, error, cause, fail_silently=self.fail_silently)
