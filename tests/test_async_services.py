@@ -21,7 +21,7 @@ from uzsms.backends import locmem
 from uzsms.backends.base import BaseAsyncSmsBackend
 from uzsms.backends.locmem import AsyncLocMemBackend
 from uzsms.dto import SendResult, SmsMessage
-from uzsms.exceptions import SmsConfigurationError, SmsValidationError
+from uzsms.exceptions import SmsConfigurationError, SmsTransportError, SmsValidationError
 from uzsms.models import SmsLog
 from uzsms.repository import SmsLogRecorder
 from uzsms.services import AsyncSmsClient
@@ -101,6 +101,13 @@ class _MixedOutcomeAsyncBackend(BaseAsyncSmsBackend):
                     SendResult(message=message, ok=True, provider_message_id="pmid")
                 )
         return results
+
+
+class _WrongCountAsyncBackend(BaseAsyncSmsBackend):
+    """A backend that violates the one-result-per-message contract."""
+
+    async def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        return [SendResult(message=m, ok=True) for m in messages[:-1]]
 
 
 @pytest.fixture
@@ -302,3 +309,50 @@ async def test_init_defaults_to_get_async_backend_and_recorder(settings_with_asy
 
     assert isinstance(client.backend, AsyncLocMemBackend)
     assert isinstance(client.recorder, SmsLogRecorder)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_backend_raise_marks_pending_logs_failed_and_still_propagates(locmem_backend):
+    backend = _RaisingAsyncBackend(SmsTransportError("broker unreachable"))
+    client = AsyncSmsClient(backend=backend, recorder=SmsLogRecorder(enabled=True))
+    messages = _messages(2)
+
+    with pytest.raises(SmsTransportError):
+        await client.send_bulk(messages)
+
+    logs = [log async for log in SmsLog.objects.order_by("created_at")]
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.error == "broker unreachable" for log in logs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_backend_raise_with_logging_disabled_issues_zero_queries_and_propagates(
+    locmem_backend, log_disabled, django_assert_num_queries
+):
+    backend = _RaisingAsyncBackend(SmsTransportError("broker unreachable"))
+    client = AsyncSmsClient(backend=backend, recorder=SmsLogRecorder())
+    messages = _messages(2)
+
+    async with assert_num_queries_async(django_assert_num_queries, 0):
+        with pytest.raises(SmsTransportError):
+            await client.send_bulk(messages)
+
+    count = await SmsLog.objects.acount()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_backend_returning_wrong_result_count_raises_clear_error_not_index_error(
+    locmem_backend,
+):
+    client = AsyncSmsClient(
+        backend=_WrongCountAsyncBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+    messages = _messages(2)
+
+    with pytest.raises(RuntimeError, match="_WrongCountAsyncBackend"):
+        await client.send_bulk(messages)

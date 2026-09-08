@@ -13,7 +13,7 @@ from uzsms.backends import locmem
 from uzsms.backends.base import BaseSmsBackend
 from uzsms.backends.locmem import LocMemBackend
 from uzsms.dto import SendResult, SmsMessage
-from uzsms.exceptions import SmsConfigurationError, SmsValidationError
+from uzsms.exceptions import SmsConfigurationError, SmsTransportError, SmsValidationError
 from uzsms.models import SmsLog
 from uzsms.repository import SmsLogRecorder
 from uzsms.services import SmsClient
@@ -52,6 +52,13 @@ class _MixedOutcomeBackend(BaseSmsBackend):
                     SendResult(message=message, ok=True, provider_message_id="pmid")
                 )
         return results
+
+
+class _WrongCountBackend(BaseSmsBackend):
+    """A backend that violates the one-result-per-message contract."""
+
+    def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        return [SendResult(message=m, ok=True) for m in messages[:-1]]
 
 
 @pytest.fixture
@@ -213,3 +220,43 @@ def test_init_defaults_to_get_backend_and_recorder(settings_with_locmem):
 
     assert isinstance(client.backend, LocMemBackend)
     assert isinstance(client.recorder, SmsLogRecorder)
+
+
+@pytest.mark.django_db
+def test_backend_raise_marks_pending_logs_failed_and_still_propagates(locmem_backend):
+    backend = _RaisingBackend(SmsTransportError("broker unreachable"))
+    client = SmsClient(backend=backend, recorder=SmsLogRecorder(enabled=True))
+    messages = _messages(2)
+
+    with pytest.raises(SmsTransportError):
+        client.send_bulk(messages)
+
+    logs = list(SmsLog.objects.order_by("created_at"))
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.error == "broker unreachable" for log in logs)
+
+
+@pytest.mark.django_db
+def test_backend_raise_with_logging_disabled_issues_zero_queries_and_propagates(
+    locmem_backend, log_disabled, django_assert_num_queries
+):
+    backend = _RaisingBackend(SmsTransportError("broker unreachable"))
+    client = SmsClient(backend=backend, recorder=SmsLogRecorder())
+    messages = _messages(2)
+
+    with django_assert_num_queries(0), pytest.raises(SmsTransportError):
+        client.send_bulk(messages)
+
+    assert SmsLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_backend_returning_wrong_result_count_raises_clear_error_not_index_error(
+    locmem_backend,
+):
+    client = SmsClient(backend=_WrongCountBackend(), recorder=SmsLogRecorder(enabled=True))
+    messages = _messages(2)
+
+    with pytest.raises(RuntimeError, match="_WrongCountBackend"):
+        client.send_bulk(messages)

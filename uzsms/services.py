@@ -18,6 +18,38 @@ from uzsms.repository import SmsLogRecorder
 from uzsms.validators import validate_message_text, validate_uz_phone
 
 
+def _build_failure_results(
+    messages: Sequence[SmsMessage], exc: Exception
+) -> list[SendResult]:
+    """Build one ``ok=False`` :class:`SendResult` per message, carrying ``exc``.
+
+    Used to mark PENDING log rows FAILED when ``backend.send_messages``
+    raises instead of returning results: without this, a raise leaves those
+    rows PENDING forever, with no error recorded — the same class of defect
+    (a log row that doesn't reflect the real outcome) this package was
+    refactored to eliminate.
+    """
+    return [SendResult(message=m, ok=False, error=str(exc)) for m in messages]
+
+
+def _check_result_count(
+    backend: object, messages: Sequence[SmsMessage], results: Sequence[SendResult]
+) -> None:
+    """Raise a clear error if ``backend`` didn't return one result per message.
+
+    A backend that violates this contract would otherwise surface as an
+    opaque ``IndexError`` in ``send()`` (or an unnamed ``ValueError`` deep in
+    ``SmsLogRecorder.record_results``) — and when ``LOG_MESSAGES`` is
+    disabled, ``record_results`` is never even called, so the mismatch would
+    go completely undetected.
+    """
+    if len(results) != len(messages):
+        raise RuntimeError(
+            f"{type(backend).__name__}.send_messages returned {len(results)} "
+            f"result(s) for {len(messages)} message(s)."
+        )
+
+
 class SmsClient:
     """Ties validation, bulk logging, and the backend together.
 
@@ -55,7 +87,15 @@ class SmsClient:
             validate_message_text(message.text)
 
         logs = self.recorder.create_pending(messages)
-        results = self.backend.send_messages(messages)
+
+        try:
+            results = self.backend.send_messages(messages)
+        except Exception as exc:
+            if logs:
+                self.recorder.record_results(logs, _build_failure_results(messages, exc))
+            raise
+
+        _check_result_count(self.backend, messages, results)
 
         if logs:
             self.recorder.record_results(logs, results)
@@ -100,7 +140,17 @@ class AsyncSmsClient:
             validate_message_text(message.text)
 
         logs = await sync_to_async(self.recorder.create_pending)(messages)
-        results = await self.backend.send_messages(messages)
+
+        try:
+            results = await self.backend.send_messages(messages)
+        except Exception as exc:
+            if logs:
+                await sync_to_async(self.recorder.record_results)(
+                    logs, _build_failure_results(messages, exc)
+                )
+            raise
+
+        _check_result_count(self.backend, messages, results)
 
         if logs:
             await sync_to_async(self.recorder.record_results)(logs, results)
