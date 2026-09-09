@@ -45,10 +45,18 @@ class SmsLog(models.Model):
         return self.phone_number
 
     def mark_sent(self, result: SendResult) -> None:
-        """Set fields to reflect a successful send. Does not call save()."""
+        """Set fields to reflect a successful send. Does not call save().
+
+        ``message_id`` is only overwritten when the backend actually
+        supplied a ``provider_message_id``; otherwise it keeps whatever it
+        already held (the client-generated ``SmsMessage.message_id`` set by
+        ``SmsLogRecorder.create_pending``, i.e. the id sent on the wire). No
+        shipped backend currently populates ``provider_message_id``, so this
+        preserves the wire id rather than blanking the column out.
+        """
         self.status = self.Status.SENT
         self.sent_at = timezone.now()
-        self.message_id = result.provider_message_id or ""
+        self.message_id = result.provider_message_id or self.message_id
         self.provider_response = result.raw
         self.is_active = True
 

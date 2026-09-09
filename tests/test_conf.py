@@ -64,6 +64,7 @@ def test_missing_required_key_raises_sms_configuration_error():
     "key,expected",
     [
         ("BACKEND", "uzsms.backends.playmobile.PlaymobileBackend"),
+        ("ASYNC_BACKEND", "uzsms.backends.playmobile.AsyncPlaymobileBackend"),
         ("ORIGINATOR", "3700"),
         ("TIMEOUT", (5, 15)),
         ("MAX_RETRIES", 3),

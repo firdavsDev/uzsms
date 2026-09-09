@@ -144,10 +144,10 @@ def log_disabled():
 
 @pytest.fixture
 def settings_with_async_locmem():
-    """Override ``SMS_SETTINGS['BACKEND']`` to point at the async LocMem backend."""
+    """Override ``SMS_SETTINGS['ASYNC_BACKEND']`` to point at the async LocMem backend."""
     merged = {
         **django_settings.SMS_SETTINGS,
-        "BACKEND": "uzsms.backends.locmem.AsyncLocMemBackend",
+        "ASYNC_BACKEND": "uzsms.backends.locmem.AsyncLocMemBackend",
     }
     with override_settings(SMS_SETTINGS=merged):
         yield
@@ -428,6 +428,27 @@ async def test_backend_returning_wrong_result_count_raises_clear_error_not_index
 
     with pytest.raises(SmsBackendError, match="_WrongCountAsyncBackend"):
         await client.send_bulk(messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_backend_returning_wrong_result_count_marks_pending_logs_failed(
+    locmem_backend,
+):
+    """MINOR 8 regression test (async side): a result-count mismatch marks
+    the PENDING rows FAILED instead of leaving them PENDING forever."""
+    client = AsyncSmsClient(
+        backend=_WrongCountAsyncBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+    messages = _messages(2)
+
+    with pytest.raises(SmsBackendError):
+        await client.send_bulk(messages)
+
+    logs = [log async for log in SmsLog.objects.order_by("created_at")]
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.error for log in logs)
 
 
 @pytest.mark.asyncio

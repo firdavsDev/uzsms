@@ -122,19 +122,49 @@ class SendSmsAPIView(APIView):
                 detail={"status_code": exc.status_code},
                 status_code=502,
             )
-        except SmsTransportError as exc:
-            return error_response("transport_error", str(exc), status_code=502)
+        except SmsTransportError:
+            # ``str(exc)`` here is whatever the underlying HTTP client
+            # raised (e.g. ``requests``'s ``ConnectionError``/``Timeout``
+            # repr), which routinely embeds the broker's hostname, port,
+            # and URL path — operator infrastructure details this
+            # endpoint's caller (potentially anonymous, if
+            # PERMISSION_CLASSES has been relaxed) is not entitled to.
+            # Mirrors the ``SmsProviderError`` branch above: a fixed,
+            # generic message only. The real detail is still persisted to
+            # ``SmsLog.error`` for operators.
+            return error_response(
+                "transport_error",
+                "The SMS provider could not be reached.",
+                status_code=502,
+            )
+
+        if not result.ok:
+            # ``FAIL_SILENTLY=True`` makes the backend RETURN an ``ok=False``
+            # ``SendResult`` instead of raising one of the exceptions caught
+            # above -- so this branch is the only place that catches that
+            # case. Without it, a failed send under FAIL_SILENTLY fell
+            # through to the 201 success response below. As with the
+            # ``SmsProviderError`` branch above, the broker's raw response
+            # body is never forwarded to the caller; only the log id, so an
+            # operator can look up ``SmsLog.error``/``.provider_response``.
+            return error_response(
+                "provider_error",
+                "The SMS provider rejected the request.",
+                detail={"log_id": result.log_id},
+                status_code=502,
+            )
 
         # ``result.log_id`` is carried straight out of ``SmsClient.send()``
         # (see ``uzsms.services._with_log_ids``) — it is the pk of exactly
         # the log row this result belongs to, no re-query needed. It is
         # ``None`` when ``sms_settings.LOG_MESSAGES`` is disabled, since no
-        # log row was ever created.
+        # log row was ever created. ``result.ok`` is always True here — a
+        # ``False`` result returns 502 above, before this point.
         data = {
             "message_id": result.message.message_id,
             "log_id": result.log_id,
             "phone_number": result.message.phone_number,
-            "status": (SmsLog.Status.SENT if result.ok else SmsLog.Status.FAILED).value,
+            "status": SmsLog.Status.SENT.value,
         }
         return success_response(data, status_code=201)
 

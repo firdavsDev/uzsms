@@ -62,6 +62,7 @@ def test_import_uzsms_without_sms_settings_does_not_raise():
         "SmsProviderError",
         "SmsBackendError",
         "get_backend",
+        "get_async_backend",
         "SMS_Sender",
     ],
 )
@@ -88,6 +89,7 @@ def test_all_exports_exactly_the_expected_names():
         "SmsProviderError",
         "SmsBackendError",
         "get_backend",
+        "get_async_backend",
         "SMS_Sender",
     }
     assert set(uzsms.__all__) == expected

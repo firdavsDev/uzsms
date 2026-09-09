@@ -118,12 +118,11 @@ class SmsClient:
 
         try:
             results = self.backend.send_messages(messages)
+            _check_result_count(self.backend, messages, results)
         except Exception as exc:
             if logs:
                 self.recorder.record_results(logs, _build_failure_results(messages, exc))
             raise
-
-        _check_result_count(self.backend, messages, results)
 
         if logs:
             self.recorder.record_results(logs, results)
@@ -171,14 +170,13 @@ class AsyncSmsClient:
 
         try:
             results = await self.backend.send_messages(messages)
+            _check_result_count(self.backend, messages, results)
         except Exception as exc:
             if logs:
                 await sync_to_async(self.recorder.record_results)(
                     logs, _build_failure_results(messages, exc)
                 )
             raise
-
-        _check_result_count(self.backend, messages, results)
 
         if logs:
             await sync_to_async(self.recorder.record_results)(logs, results)

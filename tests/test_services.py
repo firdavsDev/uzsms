@@ -22,7 +22,7 @@ from uzsms.exceptions import (
 )
 from uzsms.models import SmsLog
 from uzsms.repository import SmsLogRecorder
-from uzsms.services import SmsClient
+from uzsms.services import AsyncSmsClient, SmsClient
 
 
 def _messages(count: int) -> list[SmsMessage]:
@@ -254,6 +254,27 @@ def test_init_defaults_to_get_backend_and_recorder(settings_with_locmem):
 
 
 @pytest.mark.django_db
+def test_async_sms_client_constructs_with_stock_settings_and_uses_async_backend():
+    """CRITICAL 1 regression test.
+
+    Under stock, unmodified ``SMS_SETTINGS`` (no ``BACKEND`` override at
+    all), ``AsyncSmsClient()`` must construct successfully and resolve to
+    the async Playmobile backend, while ``SmsClient()`` built from the same
+    settings resolves to the sync one. Before the fix, ``AsyncSmsClient()``
+    raised ``SmsConfigurationError`` because ``get_async_backend()`` read
+    ``sms_settings.BACKEND``, which defaults to the *sync*
+    ``PlaymobileBackend`` -- not a ``BaseAsyncSmsBackend`` subclass.
+    """
+    from uzsms.backends.playmobile import AsyncPlaymobileBackend, PlaymobileBackend
+
+    async_client = AsyncSmsClient()
+    sync_client = SmsClient()
+
+    assert isinstance(async_client.backend, AsyncPlaymobileBackend)
+    assert isinstance(sync_client.backend, PlaymobileBackend)
+
+
+@pytest.mark.django_db
 def test_backend_raise_marks_pending_logs_failed_and_still_propagates(locmem_backend):
     backend = _RaisingBackend(SmsTransportError("broker unreachable"))
     client = SmsClient(backend=backend, recorder=SmsLogRecorder(enabled=True))
@@ -328,6 +349,26 @@ def test_backend_returning_wrong_result_count_raises_clear_error_not_index_error
 
     with pytest.raises(SmsBackendError, match="_WrongCountBackend"):
         client.send_bulk(messages)
+
+
+@pytest.mark.django_db
+def test_backend_returning_wrong_result_count_marks_pending_logs_failed(
+    locmem_backend,
+):
+    """MINOR 8 regression test: ``_check_result_count`` must run inside the
+    guarded region, so a result-count mismatch marks the PENDING rows FAILED
+    (like any other backend failure) instead of leaving them PENDING
+    forever."""
+    client = SmsClient(backend=_WrongCountBackend(), recorder=SmsLogRecorder(enabled=True))
+    messages = _messages(2)
+
+    with pytest.raises(SmsBackendError):
+        client.send_bulk(messages)
+
+    logs = list(SmsLog.objects.order_by("created_at"))
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.error for log in logs)
 
 
 @pytest.mark.django_db

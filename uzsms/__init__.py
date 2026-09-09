@@ -16,7 +16,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from uzsms.backends import get_backend
+from uzsms.backends import get_async_backend, get_backend
 from uzsms.dto import SendResult, SmsMessage
 from uzsms.exceptions import (
     SmsBackendError,
@@ -40,6 +40,7 @@ __all__ = [
     "SmsProviderError",
     "SmsTransportError",
     "SmsValidationError",
+    "get_async_backend",
     "get_backend",
 ]
 

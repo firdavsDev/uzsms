@@ -1,9 +1,11 @@
 """Backend loader for uzsms.
 
-Resolves a dotted backend path (or ``sms_settings.BACKEND`` when none is
-given) to a backend class via :func:`django.utils.module_loading.import_string`,
-and instantiates it. The resolved class is cached per ``(path, base)`` pair
-so repeated calls avoid re-importing; each call still returns a fresh
+Resolves a dotted backend path (``sms_settings.BACKEND`` for
+:func:`get_backend`, ``sms_settings.ASYNC_BACKEND`` for
+:func:`get_async_backend`, when no explicit ``path`` is given) to a backend
+class via :func:`django.utils.module_loading.import_string`, and
+instantiates it. The resolved class is cached per ``(path, base)`` pair so
+repeated calls avoid re-importing; each call still returns a fresh
 *instance*, since backends may hold open connections.
 """
 
@@ -52,8 +54,11 @@ def get_backend(path: str | None = None, **kwargs: Any) -> BaseSmsBackend:
 def get_async_backend(path: str | None = None, **kwargs: Any) -> BaseAsyncSmsBackend:
     """Resolve and instantiate an asynchronous SMS backend.
 
-    Defaults to ``sms_settings.BACKEND`` when ``path`` is ``None``.
+    Defaults to ``sms_settings.ASYNC_BACKEND`` when ``path`` is ``None`` --
+    a separate setting from ``sms_settings.BACKEND`` (which defaults to the
+    *sync* Playmobile backend), so ``SmsClient`` and ``AsyncSmsClient`` can
+    both be constructed from one unmodified ``SMS_SETTINGS`` dict.
     """
-    resolved_path = sms_settings.BACKEND if path is None else path
+    resolved_path = sms_settings.ASYNC_BACKEND if path is None else path
     backend_class = _resolve_backend_class(resolved_path, BaseAsyncSmsBackend)
     return backend_class(**kwargs)

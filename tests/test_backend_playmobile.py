@@ -256,6 +256,36 @@ def test_retried_attempts_reuse_the_same_message_id_as_the_first_attempt():
     assert message_ids == {messages[0].message_id}
 
 
+@pytest.mark.django_db
+@responses.activate
+def test_send_through_smsclient_persists_the_wire_message_id():
+    """CRITICAL 3 regression test.
+
+    No shipped backend ever populates ``SendResult.provider_message_id``
+    (``PlaymobileBackend`` included -- see ``result.raw``, not
+    ``provider_message_id``, above). Before the fix,
+    ``SmsLog.mark_sent`` did ``self.message_id = result.provider_message_id
+    or ""``, which unconditionally blanked out the log row's ``message_id``
+    -- the very ``SmsMessage.message_id`` that was put on the wire and is
+    what makes the retry policy replay-safe. This must go through a real
+    backend (not a hand-built ``SendResult``), since that's exactly the gap
+    that let this defect ship.
+    """
+    from uzsms.models import SmsLog
+    from uzsms.repository import SmsLogRecorder
+    from uzsms.services import SmsClient
+
+    responses.add(responses.POST, sms_settings.URL, json={"status": "ok"}, status=200)
+    client = SmsClient(backend=PlaymobileBackend(), recorder=SmsLogRecorder(enabled=True))
+
+    result = client.send(phone_number="998901234567", text="hello")
+
+    assert result.ok is True
+    log = SmsLog.objects.get(pk=result.log_id)
+    assert log.message_id == result.message.message_id
+    assert log.message_id != ""
+
+
 def test_get_session_returns_cached_session():
     session_a = get_session()
     session_b = get_session()
