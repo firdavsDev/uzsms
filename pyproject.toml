@@ -50,10 +50,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/firdavsDev/django-sms-uz"
-Repository = "https://github.com/firdavsDev/django-sms-uz"
-Changelog = "https://github.com/firdavsDev/django-sms-uz/blob/master/CHANGELOG.md"
-Issues = "https://github.com/firdavsDev/django-sms-uz/issues"
+Homepage = "https://github.com/firdavsDev/uzsms"
+Repository = "https://github.com/firdavsDev/uzsms"
+Changelog = "https://github.com/firdavsDev/uzsms/blob/master/CHANGELOG.md"
+Issues = "https://github.com/firdavsDev/uzsms/issues"
 
 [project.optional-dependencies]
 drf = ["djangorestframework>=3.14"]
