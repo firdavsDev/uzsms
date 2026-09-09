@@ -117,24 +117,14 @@ class SendSmsAPIView(APIView):
         except SmsTransportError as exc:
             return error_response("transport_error", str(exc), status_code=502)
 
-        # NOTE: cannot filter on ``message_id`` here — ``SmsLogRecorder``
-        # (via ``SmsLog.mark_sent``/``mark_failed``) overwrites that field
-        # with the provider's own message id (or "" when the provider
-        # doesn't return one) as part of ``client.send()``, above. By the
-        # time we get control back, the log's ``message_id`` no longer
-        # matches ``result.message.message_id``, so matching on
-        # ``phone_number``/``text`` and taking the most recently created
-        # row is the best identifier available without changing
-        # ``uzsms.services``/``uzsms.repository``.
-        log_id = (
-            SmsLog.objects.filter(phone_number=phone_number, text=text)
-            .order_by("-created_at", "-id")
-            .values_list("id", flat=True)
-            .first()
-        )
+        # ``result.log_id`` is carried straight out of ``SmsClient.send()``
+        # (see ``uzsms.services._with_log_ids``) — it is the pk of exactly
+        # the log row this result belongs to, no re-query needed. It is
+        # ``None`` when ``sms_settings.LOG_MESSAGES`` is disabled, since no
+        # log row was ever created.
         data = {
             "message_id": result.message.message_id,
-            "log_id": log_id,
+            "log_id": result.log_id,
             "phone_number": result.message.phone_number,
             "status": (SmsLog.Status.SENT if result.ok else SmsLog.Status.FAILED).value,
         }

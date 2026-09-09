@@ -21,7 +21,12 @@ from uzsms.backends import locmem
 from uzsms.backends.base import BaseAsyncSmsBackend
 from uzsms.backends.locmem import AsyncLocMemBackend
 from uzsms.dto import SendResult, SmsMessage
-from uzsms.exceptions import SmsConfigurationError, SmsTransportError, SmsValidationError
+from uzsms.exceptions import (
+    SmsBackendError,
+    SmsConfigurationError,
+    SmsTransportError,
+    SmsValidationError,
+)
 from uzsms.models import SmsLog
 from uzsms.repository import SmsLogRecorder
 from uzsms.services import AsyncSmsClient
@@ -299,7 +304,14 @@ async def test_send_bulk_uses_the_injected_recorder_instead_of_the_default(locme
     results = await client.send_bulk(messages)
 
     recorder.create_pending.assert_called_once_with(messages)
-    recorder.record_results.assert_called_once_with(fake_logs, results)
+    # ``send_bulk`` returns a *new* list of results carrying each log's pk
+    # (see ``_with_log_ids``), so it is not the same object passed to
+    # ``record_results`` (whose results don't have ``log_id`` set yet).
+    recorder.record_results.assert_called_once()
+    called_logs, called_results = recorder.record_results.call_args.args
+    assert called_logs == fake_logs
+    assert [r.message for r in called_results] == [r.message for r in results]
+    assert [r.log_id for r in results] == [log.pk for log in fake_logs]
 
 
 @pytest.mark.asyncio
@@ -354,5 +366,74 @@ async def test_backend_returning_wrong_result_count_raises_clear_error_not_index
     )
     messages = _messages(2)
 
-    with pytest.raises(RuntimeError, match="_WrongCountAsyncBackend"):
+    with pytest.raises(SmsBackendError, match="_WrongCountAsyncBackend"):
         await client.send_bulk(messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_send_result_log_id_matches_the_actual_smslog_pk(locmem_backend):
+    client = AsyncSmsClient(
+        backend=AsyncLocMemBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+
+    result = await client.send(phone_number="998901234567", text="hello")
+
+    log = await SmsLog.objects.aget()
+    assert result.log_id == log.pk
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_send_bulk_assigns_each_result_its_own_log_id_not_transposed(locmem_backend):
+    """Pins the log_id race fix: each result must carry the id of ITS OWN
+    log row, not another message's — this would fail if the ids were
+    transposed (e.g. reversed) or all set to the same row."""
+    client = AsyncSmsClient(
+        backend=AsyncLocMemBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+    messages = _messages(5)
+
+    results = await client.send_bulk(messages)
+
+    log_ids = [r.log_id for r in results]
+    assert len(set(log_ids)) == len(messages), "log ids must be distinct per message"
+
+    logs_by_phone = {
+        log.phone_number: log.pk async for log in SmsLog.objects.all()
+    }
+    for message, result in zip(messages, results):
+        assert result.log_id == logs_by_phone[message.phone_number]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_send_bulk_with_logging_disabled_leaves_log_id_none(
+    locmem_backend, log_disabled
+):
+    client = AsyncSmsClient(backend=AsyncLocMemBackend(), recorder=SmsLogRecorder())
+    messages = _messages(3)
+
+    results = await client.send_bulk(messages)
+
+    assert all(r.log_id is None for r in results)
+    count = await SmsLog.objects.acount()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_send_bulk_with_log_ids_issues_exactly_two_queries(
+    locmem_backend, django_assert_num_queries
+):
+    """Attaching log_id to each result is purely in-memory (dataclasses.replace);
+    it must not add a third query."""
+    client = AsyncSmsClient(
+        backend=AsyncLocMemBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+    messages = _messages(10)
+
+    async with atomic_async(), assert_num_queries_async(django_assert_num_queries, 2):
+        results = await client.send_bulk(messages)
+
+    assert all(r.log_id is not None for r in results)

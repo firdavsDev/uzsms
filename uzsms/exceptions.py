@@ -37,3 +37,11 @@ class SmsProviderError(SmsError):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+
+
+class SmsBackendError(SmsError):
+    """Raised when a backend violates its ``send_messages`` contract.
+
+    For example, returning a different number of results than it was given
+    messages to send.
+    """

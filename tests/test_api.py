@@ -168,6 +168,37 @@ def test_authenticated_post_valid_payload_returns_201_with_full_envelope():
     assert log.status == SmsLog.Status.SENT
 
 
+@pytest.mark.django_db
+def test_log_messages_disabled_returns_valid_envelope_with_log_id_null():
+    """With LOG_MESSAGES=False, no SmsLog row is ever created, so log_id
+    must be None rather than the endpoint erroring or leaking a stale id."""
+    from uzsms.models import SmsLog
+
+    user = _make_user()
+    with override_settings(
+        SMS_SETTINGS=_settings(
+            BACKEND="tests.test_api._StubOkBackend", LOG_MESSAGES=False
+        )
+    ):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(
+            reverse("uzsms:send_sms"),
+            {"phone_number": VALID_PHONE, "message": VALID_MESSAGE},
+            format="json",
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body.keys()) == {"success", "data", "error"}
+    assert body["success"] is True
+    assert body["data"]["log_id"] is None
+    assert SmsLog.objects.count() == 0
+
+    rendered = JSONRenderer().render(response.data)
+    assert rendered
+
+
 # ---------------------------------------------------------------------------
 # Crash fix (defect 2): every response body must be JSON-renderable
 # ---------------------------------------------------------------------------

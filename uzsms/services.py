@@ -7,6 +7,7 @@ retries belong to the backend, and there is nothing here worth caching.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Sequence
 
 from asgiref.sync import sync_to_async
@@ -14,6 +15,7 @@ from asgiref.sync import sync_to_async
 from uzsms.backends import get_async_backend, get_backend
 from uzsms.backends.base import BaseAsyncSmsBackend, BaseSmsBackend
 from uzsms.dto import SendResult, SmsMessage
+from uzsms.exceptions import SmsBackendError
 from uzsms.repository import SmsLogRecorder
 from uzsms.validators import validate_message_text, validate_uz_phone
 
@@ -44,10 +46,29 @@ def _check_result_count(
     go completely undetected.
     """
     if len(results) != len(messages):
-        raise RuntimeError(
+        raise SmsBackendError(
             f"{type(backend).__name__}.send_messages returned {len(results)} "
             f"result(s) for {len(messages)} message(s)."
         )
+
+
+def _with_log_ids(
+    logs: Sequence[object], results: Sequence[SendResult]
+) -> list[SendResult]:
+    """Return ``results`` with each carrying the ``pk`` of its own log row.
+
+    ``logs`` and ``results`` correspond index-for-index (both derive from the
+    same ``messages`` sequence, in order) — the same correspondence
+    ``SmsLogRecorder.record_results`` relies on. Building the replacement
+    list is purely in-memory (``dataclasses.replace``), so it costs no
+    additional queries: every log's ``pk`` is already populated by
+    ``create_pending``'s ``bulk_create``.
+    """
+    if not logs:
+        return list(results)
+    return [
+        dataclasses.replace(result, log_id=log.pk) for log, result in zip(logs, results)
+    ]
 
 
 class SmsClient:
@@ -100,7 +121,7 @@ class SmsClient:
         if logs:
             self.recorder.record_results(logs, results)
 
-        return results
+        return _with_log_ids(logs, results)
 
 
 class AsyncSmsClient:
@@ -155,4 +176,4 @@ class AsyncSmsClient:
         if logs:
             await sync_to_async(self.recorder.record_results)(logs, results)
 
-        return results
+        return _with_log_ids(logs, results)

@@ -27,3 +27,4 @@ class SendResult:
     status_code: int | None = None
     raw: Any = None
     error: str = ""
+    log_id: int | None = None
