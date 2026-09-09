@@ -100,7 +100,8 @@ else falls back to the default shown below. Defaults are read from
 | `URL`                | *(required)*                                     | The broker's send endpoint URL. |
 | `LOGIN`              | *(required)*                                     | Broker HTTP Basic Auth username. |
 | `PASSWORD`           | *(required)*                                     | Broker HTTP Basic Auth password. |
-| `BACKEND`            | `"uzsms.backends.playmobile.PlaymobileBackend"`  | Dotted path to the backend class used to actually send messages. |
+| `BACKEND`            | `"uzsms.backends.playmobile.PlaymobileBackend"`  | Dotted path to the backend class `SmsClient` uses to actually send messages. |
+| `ASYNC_BACKEND`      | `"uzsms.backends.playmobile.AsyncPlaymobileBackend"` | Dotted path to the backend class `AsyncSmsClient` uses. A separate setting from `BACKEND`, so a project can use `SmsClient` and `AsyncSmsClient` side by side from one unmodified `SMS_SETTINGS` dict. |
 | `ORIGINATOR`         | `"3700"`                                         | The `sms.originator` value sent in every message envelope. |
 | `TIMEOUT`            | `(5, 15)`                                        | `(connect, read)` timeout in seconds, passed straight to `requests`/mapped onto `httpx.Timeout`. |
 | `MAX_RETRIES`        | `3`                                               | Number of retries on a transient failure (connection error or a `429`/`500`/`502`/`503`/`504` response). Safe because every message carries a stable `message_id` the broker deduplicates on retry — see the docstring in `uzsms/backends/playmobile.py`. |
@@ -125,8 +126,11 @@ client = SmsClient()
 
 # Single message
 result = client.send("998901234567", "hello there")
-# result: SendResult(message=SmsMessage(...), ok=True, provider_message_id=...,
+# result: SendResult(message=SmsMessage(...), ok=True, provider_message_id=None,
 #                     status_code=200, raw=..., error="", log_id=42)
+# provider_message_id is None because no shipped backend populates it (see
+# "The SmsLog model" below) — the id that matters is message.message_id,
+# the one actually sent on the wire.
 
 # Multiple messages, sent as one batched HTTP request
 from uzsms import SmsMessage
@@ -162,9 +166,10 @@ contract as `SmsClient`; its ORM calls go through
 
 ## Backends
 
-Select a backend with `SMS_SETTINGS["BACKEND"]`, a dotted path to a class
-implementing `uzsms.backends.base.BaseSmsBackend` (sync) or
-`BaseAsyncSmsBackend` (async):
+Select the sync backend with `SMS_SETTINGS["BACKEND"]`, and the async
+backend `AsyncSmsClient` uses with `SMS_SETTINGS["ASYNC_BACKEND"]` — each a
+dotted path to a class implementing `uzsms.backends.base.BaseSmsBackend`
+(sync) or `BaseAsyncSmsBackend` (async), respectively:
 
 | Backend | Path | Behavior |
 |---|---|---|
@@ -197,12 +202,14 @@ class MyBackend(BaseSmsBackend):
         ...
 ```
 
-`get_backend()`/`get_async_backend()` (in `uzsms/backends/__init__.py`)
-resolve `SMS_SETTINGS["BACKEND"]` via `django.utils.module_loading.import_string`
-and instantiate it; a backend that doesn't subclass the expected base raises
-`SmsConfigurationError`. `open()`/`close()` are no-op hooks you can override
-to acquire/release resources (backends also work as a context manager via
-`with backend:` / `async with backend:`).
+`get_backend()` (in `uzsms/backends/__init__.py`) resolves
+`SMS_SETTINGS["BACKEND"]`, and `get_async_backend()` resolves
+`SMS_SETTINGS["ASYNC_BACKEND"]`, each via
+`django.utils.module_loading.import_string` and instantiates it; a backend
+that doesn't subclass the expected base raises `SmsConfigurationError`.
+`open()`/`close()` are no-op hooks you can override to acquire/release
+resources (backends also work as a context manager via `with backend:` /
+`async with backend:`).
 
 ## Celery task
 
@@ -275,7 +282,9 @@ that identifies the request, not the broker's own id — it's assigned before
 the send even happens. `log_id` is the `SmsLog` row's primary key, or `null`
 when `LOG_MESSAGES` is `False`. `status` is `"sent"` or `"failed"`.
 
-**Failure** (e.g. `400 Bad Request`, invalid phone number):
+**Failure** (e.g. `400 Bad Request`, invalid phone number). `message` stays
+the fixed string `"Invalid request."`; the field-level errors live in
+`error.detail`, keyed by field name (DRF's own validation error shape):
 
 ```json
 {
@@ -283,8 +292,12 @@ when `LOG_MESSAGES` is `False`. `status` is `"sent"` or `"failed"`.
     "data": null,
     "error": {
         "code": "validation_error",
-        "message": "'12345' is not a valid Uzbek phone number; expected '998' followed by nine digits.",
-        "detail": null
+        "message": "Invalid request.",
+        "detail": {
+            "phone_number": [
+                "'12345' is not a valid Uzbek phone number; expected '998' followed by nine digits."
+            ]
+        }
     }
 }
 ```
@@ -322,7 +335,7 @@ Python package is now `uzsms`):
 | `status` | `CharField`, choices | `"pending"`, `"sent"`, or `"failed"` — see `SmsLog.Status`. |
 | `created_at` | `DateTimeField` | Auto-set on creation, indexed. |
 | `sent_at` | `DateTimeField`, nullable | Set when marked sent. |
-| `message_id` | `CharField(255)` | Starts as the client-generated correlation id; overwritten with the provider's own id on a successful send. Indexed. |
+| `message_id` | `CharField(255)` | The client-generated correlation id (`SmsMessage.message_id`) that was sent on the wire. Only overwritten if the backend supplies its own `SendResult.provider_message_id` — no shipped backend currently does. Indexed. |
 | `provider_response` | `JSONField`, nullable | The broker's raw response body, when available. |
 | `error` | `TextField` | Error message on failure. |
 | `is_active` | `BooleanField`, default `False` | **Deprecated**, mirrors `status == "sent"`. Scheduled for removal in 3.0 — read `status` instead. |
@@ -374,10 +387,10 @@ These are accepted, deliberate tradeoffs, not oversights:
   `aclose()` on it (closing it is an async operation, and the reset runs
   from a synchronous Django signal handler) — every `SMS_SETTINGS` change
   in a long-lived async process leaks one client.
-- **The deprecated `SMS_Sender.create_sms_log` shim silently does nothing
-  when `LOG_MESSAGES=False`.** In 1.0.1 it always wrote a row; in 2.0 it
-  delegates to the same recorder `SmsClient` uses internally, which is a
-  no-op when logging is disabled.
+
+  (Upgrading from 1.x and still calling the deprecated `SMS_Sender.create_sms_log`?
+  See the `create_sms_log` row in `UPGRADE.md` → "Before / after" for a
+  behavior change you need to know about.)
 
 ## License
 

@@ -27,14 +27,24 @@ anything else below.** After this procedure, it is gone.
 2. Upgrade the package: `pip install --upgrade django-sms-uz` (add extras
    as needed — see `README.md`).
 3. Update `INSTALLED_APPS` and any settings/imports per the table below.
-4. Delete the old migration records for this app so Django doesn't think
-   `0001_initial` (2.0's version) is already applied:
+4. Drop the old table. **Quote the identifier** — `SMS_smslog` is
+   mixed-case, and on PostgreSQL an unquoted identifier folds to lowercase
+   (`sms_smslog`), which does not match the actual table name and errors.
+   MySQL/SQLite are more forgiving of the unquoted form, but quoting works
+   on all three (MySQL uses backticks instead of double quotes):
+   ```sql
+   DROP TABLE "SMS_smslog";
+   ```
+5. Delete the old migration records for this app so Django doesn't think
+   `0001_initial` (2.0's version) is already applied. This step is
+   **last, not before the `DROP TABLE`** — deliberately: if step 4 fails
+   (e.g. because the identifier above wasn't quoted, on Postgres), the
+   migration bookkeeping is untouched and you can fix the `DROP TABLE` and
+   retry, instead of being stranded with the table still present and its
+   migration records already gone (which makes `migrate` fail with "table
+   already exists" and no documented way out):
    ```sql
    DELETE FROM django_migrations WHERE app = 'SMS';
-   ```
-5. Drop the old table:
-   ```sql
-   DROP TABLE SMS_smslog;
    ```
 6. Run migrations to create the new schema:
    ```bash
@@ -52,6 +62,7 @@ from-scratch model over a compatibility-preserving multi-step migration.
 | `INSTALLED_APPS` entry | `"SMS"` | `"uzsms"` |
 | Import path | `from SMS.sms_utils import SMS_Sender` | `from uzsms import SmsClient` (preferred) — the old names survive as deprecated shims, but **only under the new import path**: `from uzsms import SMS_Sender` also works, with a `DeprecationWarning`. The old `SMS.sms_utils` module path itself is gone — `from SMS.sms_utils import ...` now raises `ImportError`, because the top-level `SMS` Python package no longer exists at all (only the Django app *label* `"SMS"` was kept, for migration/table-name compatibility). |
 | Sending a message | `SMS_Sender(phone, msg).SendSmsOneContact()` returning a raw `requests.Response` | `SmsClient().send(phone, msg)` returning a `SendResult` (a frozen dataclass: `ok`, `provider_message_id`, `status_code`, `raw`, `error`, `log_id`, ...) — never a `requests.Response`. |
+| `SMS_Sender.create_sms_log(...)` | Always wrote an `SmsLog` row. | Still available as a deprecated shim, but now delegates to the same recorder `SmsClient` uses internally — **if you have `SMS_SETTINGS["LOG_MESSAGES"] = False`, `create_sms_log` silently does nothing and returns `None`**, instead of writing a row. If your 1.0.1 code has `create_sms_log` call sites, check `LOG_MESSAGES` before relying on their return value. |
 | HTTP API authentication | Endpoint was `AllowAny` — anyone could send SMS through your broker credentials. | Endpoint requires authentication by default (`SMS_SETTINGS["PERMISSION_CLASSES"]` defaults to `IsAuthenticated`). Unauthenticated requests now get `401`/`403` instead of `201`. |
 | HTTP API URL | `send_sms/` (e.g. `/sms/send_sms/`) | `send/` (e.g. `/sms/send/`). **Breaking** — update any client code, load balancer rules, or reverse-proxy config hardcoding the old path. |
 | HTTP API response body | `{"...whatever requests.Response happened to serialize to, or a crash..."}` | Uniform envelope on every response: `{"success": bool, "data": {...} | null, "error": {"code", "message", "detail"} | null}`. See `README.md` → "Response envelope" for worked examples. |

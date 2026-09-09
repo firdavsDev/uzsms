@@ -35,7 +35,10 @@ is data-destroying for existing installs.
   Retries are safe because every message carries a stable `message_id`
   the broker deduplicates on replay.
 - `SMS_SETTINGS["FAIL_SILENTLY"]`, `["MAX_MESSAGE_LENGTH"]`,
-  `["PERMISSION_CLASSES"]`, and `["THROTTLE_RATE"]`.
+  `["PERMISSION_CLASSES"]`, `["THROTTLE_RATE"]`, and `["ASYNC_BACKEND"]`
+  (the backend `AsyncSmsClient` resolves, kept separate from `["BACKEND"]`
+  so `SmsClient` and `AsyncSmsClient` can both be constructed from one
+  unmodified `SMS_SETTINGS` dict).
 - Shared phone-number and message-text validators
   (`uzsms/validators.py`), used by both the client and the DRF
   serializer.
@@ -56,9 +59,9 @@ is data-destroying for existing installs.
   entry point.
 - A defined public API surface: `uzsms/__init__.py` exposes
   `SmsClient`, `AsyncSmsClient`, `SmsMessage`, `SendResult`,
-  `SmsLogRecorder`, `SMS_Sender`, `get_backend`, and the exception
-  hierarchy, resolved lazily so importing `uzsms` never requires
-  `SMS_SETTINGS` to be configured.
+  `SmsLogRecorder`, `SMS_Sender`, `get_backend`, `get_async_backend`, and
+  the exception hierarchy, resolved lazily so importing `uzsms` never
+  requires `SMS_SETTINGS` to be configured.
 - `SmsLog.status` (`pending`/`sent`/`failed`), replacing the old
   activity-only tracking.
 - A CI workflow running the test suite and `ruff check` across the
@@ -87,8 +90,8 @@ is data-destroying for existing installs.
 
 ### Fixed
 
-Four correctness defects present in 1.0.1's `SMS/sms_utils.py`, all
-in the broker HTTP call:
+Four performance defects present in 1.0.1's `SMS/sms_utils.py`, all in the
+broker HTTP call:
 
 - **No request timeout.** A stalled broker could pin a worker thread
   forever. Every request now passes `SMS_SETTINGS["TIMEOUT"]`.
@@ -103,6 +106,15 @@ in the broker HTTP call:
   message's wire `message-id` is now its own `SmsMessage.message_id`
   (generated once per message), never a shared constant and never
   regenerated between retries.
+
+Plus two correctness defects:
+
+- **The old HTTP view crashed on every request.** `SMS/views.py` did
+  `return Response(result)` where `result` was a raw `requests.Response`
+  object, which DRF cannot serialize — every request to the send endpoint
+  crashed. Every response body this API now returns is built by
+  `uzsms/api/responses.py`, whose envelope contains only
+  JSON-serializable values.
 - A pending log row that raised during `send()` (rather than returning
   a normal failure result) is now marked `failed` with `error` set,
   instead of being left `pending` forever.
@@ -122,6 +134,15 @@ in the broker HTTP call:
   (which can carry broker-internal error text, account, or routing
   details) is persisted to `SmsLog.provider_response` for operators to
   inspect, but never returned in the API response.
+- **A transport failure no longer leaks the broker's hostname, port, or
+  URL path.** A connection error's `str()` (e.g. from `requests`/`httpx`)
+  routinely embeds that information; the send endpoint now returns a
+  fixed, generic message on transport failure, matching the provider-error
+  branch above. The real detail is still persisted to `SmsLog.error`.
+- **A send that fails under `FAIL_SILENTLY=True` no longer reports
+  success.** The backend RETURNS `SendResult(ok=False, ...)` instead of
+  raising in that mode; the send endpoint now checks `result.ok` and
+  returns `502`/`provider_error` instead of `201`/`success: true`.
 
 ### Deprecated
 
@@ -146,3 +167,13 @@ in the broker HTTP call:
   Python package to import from — `from SMS.sms_utils import ...` now
   raises `ImportError`. Use `from uzsms import ...` instead (see
   `UPGRADE.md`).
+
+### Known Limitations
+
+- **Partial-success responses are not detected.** `PlaymobileBackend`/
+  `AsyncPlaymobileBackend` map a single HTTP outcome onto every message in
+  a batch: if the broker returns HTTP 200 for the whole batch but silently
+  rejects individual recipients within it, those messages are recorded as
+  `sent` anyway. The broker does not document a per-message failure format
+  within a 200 response, so this can't currently be detected. See
+  `README.md` → "Known limitations" for the full list.
