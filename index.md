@@ -1,31 +1,33 @@
-# django-sms-uz
+# uzsms
 
 An SMS-sending package for Django, built for the Playmobile broker used by
 Uzbek telecom operators. It provides a validated, pooled, retrying HTTP
 client (sync and async), a Django model that logs every outgoing message,
 an optional DRF endpoint, and an optional Celery task.
 
-The importable package is `uzsms` (the PyPI distribution name is still
-`django-sms-uz`).
+As of 2.0 the distribution and the importable package share one name:
+`pip install uzsms`, `import uzsms`. 1.x was published as
+`django-sms-uz`, which is now frozen at 1.0.1 and receives no further
+releases.
 
 > ### ⚠️ Upgrading from 1.x?
 > 2.0 is a **breaking release**. Its migration history was replaced with a
 > single `0001_initial`, which is **data-destroying** for existing
 > installs — do not run `migrate` before reading the upgrade guide:
-> [UPGRADE.md](https://github.com/firdavsDev/django-sms-uz/blob/refactor/2.0/UPGRADE.md).
+> [UPGRADE.md](https://github.com/firdavsDev/uzsms/blob/master/UPGRADE.md).
 
 ## Installation
 
 ```bash
-pip install django-sms-uz
+pip install uzsms
 ```
 
 With extras, as needed:
 
 ```bash
-pip install "django-sms-uz[drf]"      # HTTP API (Django REST Framework)
-pip install "django-sms-uz[async]"    # AsyncSmsClient / AsyncPlaymobileBackend (httpx)
-pip install "django-sms-uz[celery]"   # uzsms.tasks.send_sms_task
+pip install "uzsms[drf]"      # HTTP API (Django REST Framework)
+pip install "uzsms[async]"    # AsyncSmsClient / AsyncPlaymobileBackend (httpx)
+pip install "uzsms[celery]"   # uzsms.tasks.send_sms_task
 ```
 
 ## Quickstart
@@ -161,12 +163,12 @@ write a custom one, the Celery task, the `SmsLog` model and its `status`
 values, troubleshooting, and known limitations — live in the package
 README:
 
-- [README](https://github.com/firdavsDev/django-sms-uz/blob/refactor/2.0/README.md)
-- [UPGRADE guide (1.x → 2.0)](https://github.com/firdavsDev/django-sms-uz/blob/refactor/2.0/UPGRADE.md)
-- [CHANGELOG](https://github.com/firdavsDev/django-sms-uz/blob/refactor/2.0/CHANGELOG.md)
-- [PyPI project page](https://pypi.org/project/django-sms-uz/)
+- [README](https://github.com/firdavsDev/uzsms/blob/master/README.md)
+- [UPGRADE guide (1.x → 2.0)](https://github.com/firdavsDev/uzsms/blob/master/UPGRADE.md)
+- [CHANGELOG](https://github.com/firdavsDev/uzsms/blob/master/CHANGELOG.md)
+- [PyPI project page](https://pypi.org/project/uzsms/)
 
 ### Contact
 
 Found a bug or have an idea? Open an issue on
-[GitHub](https://github.com/firdavsDev/django-sms-uz/issues).
+[GitHub](https://github.com/firdavsDev/uzsms/issues).
