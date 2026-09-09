@@ -68,6 +68,28 @@ class _ProviderFailureBackend(BaseSmsBackend):
         )
 
 
+# A deliberately distinctive string that would never otherwise appear in a
+# response body, used to prove the broker's raw body never reaches the API
+# caller (see test_provider_failure_detail_never_contains_the_broker_body).
+_BROKER_BODY_SENTINEL = "SENTINEL-BROKER-INTERNAL-TEXT-8f3ac2d1"
+
+
+class _LeakyProviderFailureBackend(BaseSmsBackend):
+    """Raises ``SmsProviderError`` carrying a broker body with a sentinel
+    string in it, standing in for broker-internal error text/account/routing
+    details that must never reach the API caller."""
+
+    def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        raise SmsProviderError(
+            "broker rejected the message",
+            status_code=400,
+            body={
+                "error": _BROKER_BODY_SENTINEL,
+                "account_id": "acct-internal-999",
+            },
+        )
+
+
 def _settings(**overrides):
     return {**BASE_SMS_SETTINGS, **overrides}
 
@@ -271,6 +293,27 @@ def test_over_length_message_returns_400():
     assert body["error"]["code"] == "validation_error"
 
 
+def test_serializer_never_assigns_self_errors_directly():
+    """Pins the 1.0.1 fix: the old ``ValidatePhoneNumber`` serializer
+    assigned directly to the DRF-internal ``self._errors`` instead of going
+    through the normal validation flow. Source inspection catches a literal
+    reintroduction of that pattern; the functional check confirms
+    ``is_valid()``/``.errors`` behave through DRF's real validation path
+    (a pre-set ``self._errors`` would leave these stale or empty).
+    """
+    import inspect
+
+    from uzsms.api.serializers import SendSmsSerializer
+
+    source = inspect.getsource(SendSmsSerializer)
+    assert "_errors" not in source
+
+    serializer = SendSmsSerializer(data={"phone_number": "not-a-phone", "message": ""})
+    assert serializer.is_valid() is False
+    assert "phone_number" in serializer.errors
+    assert "message" in serializer.errors
+
+
 # ---------------------------------------------------------------------------
 # Provider failure
 # ---------------------------------------------------------------------------
@@ -296,6 +339,37 @@ def test_provider_failure_returns_502_provider_error():
     assert body["success"] is False
     assert body["data"] is None
     assert body["error"]["code"] == "provider_error"
+
+
+@pytest.mark.django_db
+def test_provider_failure_detail_never_contains_the_broker_body():
+    """Regression guard: the broker's raw response body (including anything
+    it carries, such as account/routing details) must never reach the API
+    caller — not in error.detail, and not anywhere else in the envelope.
+    Asserts against the full rendered JSON text, not just the ``detail``
+    key, so a future refactor that moves the body elsewhere still trips it.
+    """
+    user = _make_user()
+    with override_settings(
+        SMS_SETTINGS=_settings(BACKEND="tests.test_api._LeakyProviderFailureBackend")
+    ):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(
+            reverse("uzsms:send_sms"),
+            {"phone_number": VALID_PHONE, "message": VALID_MESSAGE},
+            format="json",
+        )
+
+    assert response.status_code == 502
+    raw_text = response.content.decode()
+    assert _BROKER_BODY_SENTINEL not in raw_text
+    assert "acct-internal-999" not in raw_text
+
+    body = response.json()
+    assert body["error"]["code"] == "provider_error"
+    # status_code is fine to forward; the body is not.
+    assert body["error"]["detail"] == {"status_code": 400}
 
 
 # ---------------------------------------------------------------------------

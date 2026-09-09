@@ -108,10 +108,18 @@ class SendSmsAPIView(APIView):
         except SmsValidationError as exc:
             return error_response("validation_error", str(exc), status_code=400)
         except SmsProviderError as exc:
+            # ``exc.body`` is the broker's raw, unfiltered response body —
+            # it can carry broker-internal error text, account, or routing
+            # details, and this endpoint's caller (potentially anonymous,
+            # if PERMISSION_CLASSES has been relaxed) is not entitled to
+            # any of that. Only the upstream HTTP status code — not
+            # sensitive — is forwarded; the message stays a fixed, generic
+            # string rather than anything derived from the broker's own
+            # wording.
             return error_response(
                 "provider_error",
-                str(exc),
-                detail={"status_code": exc.status_code, "body": exc.body},
+                "The SMS provider rejected the request.",
+                detail={"status_code": exc.status_code},
                 status_code=502,
             )
         except SmsTransportError as exc:
