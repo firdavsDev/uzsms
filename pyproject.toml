@@ -50,7 +50,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/firdavsDev"
+Homepage = "https://github.com/firdavsDev/django-sms-uz"
+Repository = "https://github.com/firdavsDev/django-sms-uz"
+Changelog = "https://github.com/firdavsDev/django-sms-uz/blob/master/CHANGELOG.md"
+Issues = "https://github.com/firdavsDev/django-sms-uz/issues"
 
 [project.optional-dependencies]
 drf = ["djangorestframework>=3.14"]
@@ -63,10 +66,15 @@ dev = [
     "responses",
     "respx",
     "ruff",
+    "djangorestframework>=3.14",
+    "celery>=5.2",
 ]
 
 [tool.setuptools.packages.find]
 include = ["uzsms*"]
+
+[tool.setuptools.package-data]
+uzsms = ["py.typed"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
