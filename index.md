@@ -1,5 +1,11 @@
 # uzsms
 
+[![PyPI](https://img.shields.io/pypi/v/uzsms.svg)](https://pypi.org/project/uzsms/)
+[![Python versions](https://img.shields.io/pypi/pyversions/uzsms.svg)](https://pypi.org/project/uzsms/)
+[![Django versions](https://img.shields.io/badge/django-4.2%20%7C%205.0%20%7C%205.1-092E20.svg)](https://pypi.org/project/uzsms/)
+[![CI](https://github.com/firdavsDev/uzsms/actions/workflows/ci.yml/badge.svg)](https://github.com/firdavsDev/uzsms/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/pypi/l/uzsms.svg)](https://github.com/firdavsDev/uzsms/blob/master/LICENSE)
+
 An SMS-sending package for Django, built for the Playmobile broker used by
 Uzbek telecom operators. It provides a validated, pooled, retrying HTTP
 client (sync and async), a Django model that logs every outgoing message,
