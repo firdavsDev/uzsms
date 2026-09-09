@@ -34,7 +34,7 @@ jobs:
         run: |
           version="${{ steps.read.outputs.version }}"
           status=$(curl -sS -o /dev/null -w '%{http_code}' \
-            "https://pypi.org/pypi/django-sms-uz/${version}/json")
+            "https://pypi.org/pypi/django-smsuz/${version}/json")
           if [ "$status" = "404" ]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "$version is not on PyPI -- will publish."
@@ -95,10 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/django-sms-uz
-    permissions:
-      # Required for PyPI Trusted Publishing (OIDC). No API token is stored.
-      id-token: write
+      url: https://pypi.org/p/django-smsuz
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -107,6 +104,8 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   github-release:
     needs: [check-version, publish]
