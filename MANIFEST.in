@@ -1,2 +1,4 @@
 include LICENSE
-include README.rst
+include README.md
+include UPGRADE.md
+include CHANGELOG.md
