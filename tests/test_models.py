@@ -53,6 +53,24 @@ def test_mark_failed_sets_fields_and_leaves_is_active_false(django_assert_num_qu
     assert log.status == SmsLog.Status.FAILED
     assert log.error == "provider unreachable"
     assert log.is_active is False
+    assert log.provider_response is None
+
+
+@pytest.mark.django_db
+def test_mark_failed_persists_provider_response_when_raw_is_present(
+    django_assert_num_queries,
+):
+    log = SmsLog.objects.create(phone_number="998901234567", text="hello")
+    body = {"error": "bad recipient", "account_id": "acct-1"}
+    result = _result(ok=False, error="broker rejected the message", raw=body)
+
+    with django_assert_num_queries(0):
+        log.mark_failed(result)
+
+    assert log.status == SmsLog.Status.FAILED
+    assert log.error == "broker rejected the message"
+    assert log.provider_response == body
+    assert log.is_active is False
 
 
 @pytest.mark.django_db

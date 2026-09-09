@@ -30,8 +30,15 @@ def _build_failure_results(
     rows PENDING forever, with no error recorded — the same class of defect
     (a log row that doesn't reflect the real outcome) this package was
     refactored to eliminate.
+
+    ``SmsProviderError`` carries the broker's response body as ``.body``;
+    passing it through as ``raw`` lets ``SmsLog.mark_failed`` persist it into
+    ``provider_response``, since the API no longer forwards that body to
+    callers. ``SmsTransportError`` (and any other exception) has no such
+    attribute, so ``raw`` is correctly ``None`` for those.
     """
-    return [SendResult(message=m, ok=False, error=str(exc)) for m in messages]
+    raw = getattr(exc, "body", None)
+    return [SendResult(message=m, ok=False, error=str(exc), raw=raw) for m in messages]
 
 
 def _check_result_count(

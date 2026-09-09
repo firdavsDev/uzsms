@@ -237,6 +237,10 @@ async def test_fail_silently_returns_ok_false_results_instead_of_raising():
         assert result.message is message
         assert result.ok is False
         assert result.error
+        # The broker body must still reach the caller when fail_silently is
+        # used, so it can be persisted into SmsLog.provider_response even
+        # though the API no longer forwards it to callers.
+        assert result.raw == {"error": "bad recipient"}
 
 
 @pytest.mark.asyncio

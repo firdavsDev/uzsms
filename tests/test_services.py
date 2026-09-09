@@ -16,6 +16,7 @@ from uzsms.dto import SendResult, SmsMessage
 from uzsms.exceptions import (
     SmsBackendError,
     SmsConfigurationError,
+    SmsProviderError,
     SmsTransportError,
     SmsValidationError,
 )
@@ -64,6 +65,24 @@ class _WrongCountBackend(BaseSmsBackend):
 
     def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
         return [SendResult(message=m, ok=True) for m in messages[:-1]]
+
+
+class _FailSilentlyProviderBackend(BaseSmsBackend):
+    """Mimics ``PlaymobileBackend(fail_silently=True)`` on a provider error:
+    returns ``ok=False`` results carrying the broker's parsed body as ``raw``,
+    instead of raising."""
+
+    def send_messages(self, messages: Sequence[SmsMessage]) -> list[SendResult]:
+        return [
+            SendResult(
+                message=m,
+                ok=False,
+                status_code=400,
+                error="Playmobile broker responded with status 400.",
+                raw={"error": "bad recipient"},
+            )
+            for m in messages
+        ]
 
 
 @pytest.fixture
@@ -247,6 +266,43 @@ def test_backend_raise_marks_pending_logs_failed_and_still_propagates(locmem_bac
     assert len(logs) == 2
     assert all(log.status == SmsLog.Status.FAILED for log in logs)
     assert all(log.error == "broker unreachable" for log in logs)
+    # SmsTransportError carries no broker body; provider_response must stay None.
+    assert all(log.provider_response is None for log in logs)
+
+
+@pytest.mark.django_db
+def test_backend_raise_with_provider_error_persists_broker_body_in_log(locmem_backend):
+    broker_body = {"error": "bad recipient", "account_id": "acct-1"}
+    backend = _RaisingBackend(
+        SmsProviderError("broker rejected the message", status_code=400, body=broker_body)
+    )
+    client = SmsClient(backend=backend, recorder=SmsLogRecorder(enabled=True))
+    messages = _messages(2)
+
+    with pytest.raises(SmsProviderError):
+        client.send_bulk(messages)
+
+    logs = list(SmsLog.objects.order_by("created_at"))
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.error == "broker rejected the message" for log in logs)
+    assert all(log.provider_response == broker_body for log in logs)
+
+
+@pytest.mark.django_db
+def test_fail_silently_provider_failure_persists_broker_body_in_log(locmem_backend):
+    client = SmsClient(
+        backend=_FailSilentlyProviderBackend(), recorder=SmsLogRecorder(enabled=True)
+    )
+    messages = _messages(2)
+
+    results = client.send_bulk(messages)
+
+    assert all(r.ok is False for r in results)
+    logs = list(SmsLog.objects.order_by("created_at"))
+    assert len(logs) == 2
+    assert all(log.status == SmsLog.Status.FAILED for log in logs)
+    assert all(log.provider_response == {"error": "bad recipient"} for log in logs)
 
 
 @pytest.mark.django_db

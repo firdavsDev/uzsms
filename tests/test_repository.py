@@ -111,6 +111,29 @@ def test_record_results_applies_mixed_outcomes_correctly():
 
 
 @pytest.mark.django_db
+def test_record_results_persists_provider_response_on_a_failed_result():
+    recorder = SmsLogRecorder(enabled=True)
+    messages = _messages(1)
+    logs = recorder.create_pending(messages)
+    body = {"error": "bad recipient", "account_id": "acct-1"}
+    results = [
+        SendResult(
+            message=messages[0],
+            ok=False,
+            error="broker rejected the message",
+            raw=body,
+        )
+    ]
+
+    recorder.record_results(logs, results)
+
+    failed_log = SmsLog.objects.get(pk=logs[0].pk)
+    assert failed_log.status == SmsLog.Status.FAILED
+    assert failed_log.error == "broker rejected the message"
+    assert failed_log.provider_response == body
+
+
+@pytest.mark.django_db
 def test_record_results_with_empty_logs_issues_zero_queries(django_assert_num_queries):
     recorder = SmsLogRecorder(enabled=True)
 

@@ -53,6 +53,15 @@ class SmsLog(models.Model):
         self.is_active = True
 
     def mark_failed(self, result: SendResult) -> None:
-        """Set fields to reflect a failed send. Does not call save()."""
+        """Set fields to reflect a failed send. Does not call save().
+
+        Persists the provider's response body into ``provider_response``
+        when the result carries one (``result.raw is not None``) — the API
+        no longer forwards that body to callers (see ``uzsms/api/views.py``),
+        so this is the only place operators can still see it to diagnose a
+        failed send.
+        """
         self.status = self.Status.FAILED
         self.error = result.error
+        if result.raw is not None:
+            self.provider_response = result.raw

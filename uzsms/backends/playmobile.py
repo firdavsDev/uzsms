@@ -175,8 +175,11 @@ def _build_failure(
 ) -> list[SendResult]:
     status_code = getattr(error, "status_code", None)
     if fail_silently:
+        raw = getattr(error, "body", None)
         return [
-            SendResult(message=m, ok=False, status_code=status_code, error=str(error))
+            SendResult(
+                message=m, ok=False, status_code=status_code, error=str(error), raw=raw
+            )
             for m in messages
         ]
     if cause is not None:
