@@ -1,6 +1,6 @@
 """Optional Celery task for uzsms.
 
-Celery is an optional extra (``django-sms-uz[celery]``): importing this
+Celery is an optional extra (``django-smsuz[celery]``): importing this
 module must never raise just because Celery isn't installed. Only
 *calling* :func:`send_sms_task` without Celery installed raises a clear,
 actionable :class:`~uzsms.exceptions.SmsConfigurationError`.
@@ -29,7 +29,7 @@ except ImportError:
 
         Returns a decorator that replaces the wrapped function with one
         that raises :class:`SmsConfigurationError` when called, naming the
-        ``django-sms-uz[celery]`` extra. This keeps *importing*
+        ``django-smsuz[celery]`` extra. This keeps *importing*
         ``uzsms.tasks`` safe without Celery installed; only invoking the
         task fails, with a clear, actionable message.
         """
@@ -38,7 +38,7 @@ except ImportError:
             def _celery_not_installed(*args: Any, **kwargs: Any) -> Any:
                 raise SmsConfigurationError(
                     "Celery is required to use uzsms.tasks.send_sms_task. "
-                    "Install it with `pip install django-sms-uz[celery]`."
+                    "Install it with `pip install django-smsuz[celery]`."
                 )
 
             _celery_not_installed.__name__ = getattr(func, "__name__", "shared_task")

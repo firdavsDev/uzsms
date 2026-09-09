@@ -24,8 +24,15 @@ anything else below.** After this procedure, it is gone.
 
 1. **Back up your database** (or at minimum, export the `SMS_smslog` table)
    before doing anything else.
-2. Upgrade the package: `pip install --upgrade django-sms-uz` (add extras
-   as needed — see `README.md`).
+2. Swap the distribution. 2.0 is published under a **new PyPI name**, so
+   this is not an in-place upgrade — uninstall the old one first, or the
+   obsolete `SMS` package stays on your path:
+   ```bash
+   pip uninstall django-sms-uz
+   pip install django-smsuz
+   ```
+   Add extras as needed — see `README.md`. If you pin dependencies, update
+   `requirements.txt` / `pyproject.toml` to name `django-smsuz`.
 3. Update `INSTALLED_APPS` and any settings/imports per the table below.
 4. Drop the old table. **Quote the identifier** — `SMS_smslog` is
    mixed-case, and on PostgreSQL an unquoted identifier folds to lowercase
@@ -71,14 +78,14 @@ from-scratch model over a compatibility-preserving multi-step migration.
 
 ## New in 2.0 you may want to adopt
 
-- `AsyncSmsClient` / `AsyncPlaymobileBackend` for async Django (`django-sms-uz[async]`).
+- `AsyncSmsClient` / `AsyncPlaymobileBackend` for async Django (`django-smsuz[async]`).
 - `send_bulk()` to send many messages in one batched HTTP request instead
   of one request per message.
 - Swappable backends (`SMS_SETTINGS["BACKEND"]`) — `ConsoleBackend` and
   `LocMemBackend` for local development and tests, `DummyBackend` for a
   pure no-op.
 - `uzsms.tasks.send_sms_task`, an optional Celery task with automatic
-  retry on transport failures (`django-sms-uz[celery]`).
+  retry on transport failures (`django-smsuz[celery]`).
 - Configurable timeout, retry, and connection pooling
   (`TIMEOUT`/`MAX_RETRIES`/`RETRY_BACKOFF`/`POOL_MAXSIZE`) — 1.0.1 had none
   of these and could hang a worker thread indefinitely on a stalled broker.

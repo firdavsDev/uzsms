@@ -555,7 +555,7 @@ def test_send_sms_route_resolves_and_path_ends_in_send_slash():
 
 def test_importing_uzsms_urls_without_drf_raises_configuration_error():
     """A fresh interpreter with DRF blocked must raise SmsConfigurationError
-    naming the ``django-sms-uz[drf]`` extra, not an opaque ImportError.
+    naming the ``django-smsuz[drf]`` extra, not an opaque ImportError.
 
     Mirrors the pattern in ``tests/test_backend_playmobile_async.py``'s
     ``test_module_imports_without_httpx_installed``.
@@ -567,7 +567,7 @@ def test_importing_uzsms_urls_without_drf_raises_configuration_error():
         "try:\n"
         "    import uzsms.urls\n"
         "except SmsConfigurationError as exc:\n"
-        "    assert 'django-sms-uz[drf]' in str(exc), str(exc)\n"
+        "    assert 'django-smsuz[drf]' in str(exc), str(exc)\n"
         "    print('OK')\n"
         "else:\n"
         "    raise AssertionError('expected SmsConfigurationError, none was raised')\n"

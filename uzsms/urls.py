@@ -16,7 +16,7 @@ try:
 except ImportError as exc:
     raise SmsConfigurationError(
         "uzsms's HTTP API requires Django REST Framework, which is not "
-        "installed. Install it with `pip install django-sms-uz[drf]`."
+        "installed. Install it with `pip install django-smsuz[drf]`."
     ) from exc
 
 app_name = _api_urls.app_name
