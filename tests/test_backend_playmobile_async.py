@@ -338,5 +338,5 @@ async def test_async_backend_raises_configuration_error_when_httpx_is_absent(mon
 
     backend = AsyncPlaymobileBackend()
 
-    with pytest.raises(SmsConfigurationError, match=r"django-smsuz\[async\]"):
+    with pytest.raises(SmsConfigurationError, match=r"uzsms\[async\]"):
         await backend.send_messages(_messages(1))

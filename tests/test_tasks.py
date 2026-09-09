@@ -1,6 +1,6 @@
 """Tests for the optional Celery task in uzsms.tasks.
 
-Celery is an optional extra (``django-smsuz[celery]``). These tests prove
+Celery is an optional extra (``uzsms[celery]``). These tests prove
 both halves of that contract: importing ``uzsms.tasks`` never requires
 Celery to be installed, and only *calling* the task without Celery raises a
 clear, actionable error. The "Celery absent" cases run in a subprocess so
@@ -77,7 +77,7 @@ def test_calling_task_without_celery_raises_configuration_error_naming_the_extra
         "try:\n"
         "    tasks.send_sms_task('998901234567', 'hi')\n"
         "except SmsConfigurationError as exc:\n"
-        "    assert 'django-smsuz[celery]' in str(exc), str(exc)\n"
+        "    assert 'uzsms[celery]' in str(exc), str(exc)\n"
         "    print('OK')\n"
         "else:\n"
         "    raise AssertionError('did not raise')\n"

@@ -8,12 +8,12 @@ A ground-up rewrite. See `UPGRADE.md` for the 1.x → 2.0 migration
 procedure — **read it before running `migrate`**, the migration history
 is data-destroying for existing installs.
 
-**The PyPI distribution is renamed** from `django-sms-uz` to
-`django-smsuz`. `pip install --upgrade` will not find 2.0; uninstall
-`django-sms-uz` and install `django-smsuz` instead. The importable
-package name (`uzsms`), the app label (`SMS`), the database table
-(`SMS_smslog`) and the settings key (`SMS_SETTINGS`) are unaffected.
-`django-sms-uz` stays on PyPI at 1.0.1 and receives no further releases.
+**The PyPI distribution is renamed** from `django-sms-uz` to `uzsms`,
+matching the importable package name. `pip install --upgrade` will not
+find 2.0 across a rename; uninstall `django-sms-uz` and install `uzsms`
+instead. The app label (`SMS`), the database table (`SMS_smslog`) and
+the settings key (`SMS_SETTINGS`) are unaffected. `django-sms-uz` stays
+on PyPI at 1.0.1 and receives no further releases.
 
 ### Added
 
@@ -58,7 +58,7 @@ package name (`uzsms`), the app label (`SMS`), the database table
 - Throttling on the send endpoint (`SMS_SETTINGS["THROTTLE_RATE"]`,
   default `20/min`).
 - An optional Celery task, `uzsms.tasks.send_sms_task`
-  (`django-smsuz[celery]`), with automatic retry on
+  (`uzsms[celery]`), with automatic retry on
   `SmsTransportError`.
 - Backward-compatibility shims (`uzsms/compat.py`): `SMS_Sender`
   reproduces 1.0.1's constructor and method names, delegating to

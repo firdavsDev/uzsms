@@ -92,7 +92,7 @@ def reset_session() -> None:
 def _import_httpx():
     """Import and return the ``httpx`` module, or raise a clear config error.
 
-    ``httpx`` is an optional extra (``django-smsuz[async]``); this is the
+    ``httpx`` is an optional extra (``uzsms[async]``); this is the
     only place :class:`AsyncPlaymobileBackend` reaches for it, and it does
     so lazily, on first use, so importing this module never requires
     ``httpx`` to be installed.
@@ -102,7 +102,7 @@ def _import_httpx():
     except ImportError as exc:
         raise SmsConfigurationError(
             "httpx is required to use AsyncPlaymobileBackend. Install it "
-            "with `pip install django-smsuz[async]`."
+            "with `pip install uzsms[async]`."
         ) from exc
     return httpx
 

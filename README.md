@@ -1,13 +1,14 @@
-# django-smsuz
+# uzsms
 
 An SMS-sending package for Django, built for the Playmobile broker used by
 Uzbek telecom operators. It provides a validated, pooled, retrying HTTP
 client (sync and async), a Django model that logs every outgoing message,
 an optional DRF endpoint, and an optional Celery task.
 
-The importable package is `uzsms`. As of 2.0 the PyPI distribution is
-published as **`django-smsuz`**; 1.x was released as `django-sms-uz`, which
-is now frozen at 1.0.1 and receives no further releases.
+As of 2.0 the distribution and the importable package share one name:
+`pip install uzsms`, `import uzsms`. 1.x was published as
+`django-sms-uz`, which is now frozen at 1.0.1 and receives no further
+releases.
 
 > **Upgrading from 1.x?** Read [`UPGRADE.md`](UPGRADE.md) first. 2.0 is a
 > breaking release, and its migration history is **data-destroying** for
@@ -18,22 +19,22 @@ is now frozen at 1.0.1 and receives no further releases.
 Base install (sync sending only, no HTTP API, no Celery task):
 
 ```bash
-pip install django-smsuz
+pip install uzsms
 ```
 
 With extras, as needed:
 
 ```bash
-pip install "django-smsuz[drf]"      # HTTP API (Django REST Framework)
-pip install "django-smsuz[async]"    # AsyncSmsClient / AsyncPlaymobileBackend (httpx)
-pip install "django-smsuz[celery]"   # uzsms.tasks.send_sms_task
-pip install "django-smsuz[drf,async,celery]"  # any combination
+pip install "uzsms[drf]"      # HTTP API (Django REST Framework)
+pip install "uzsms[async]"    # AsyncSmsClient / AsyncPlaymobileBackend (httpx)
+pip install "uzsms[celery]"   # uzsms.tasks.send_sms_task
+pip install "uzsms[drf,async,celery]"  # any combination
 ```
 
 For contributing to this package itself:
 
 ```bash
-pip install "django-smsuz[dev]"
+pip install "uzsms[dev]"
 ```
 
 ## Quickstart
@@ -150,7 +151,7 @@ update those rows in bulk with the outcome.
 
 ## Async usage
 
-Requires the `async` extra (`pip install "django-smsuz[async]"`, which
+Requires the `async` extra (`pip install "uzsms[async]"`, which
 installs `httpx`):
 
 ```python
@@ -214,7 +215,7 @@ resources (backends also work as a context manager via `with backend:` /
 
 ## Celery task
 
-Requires the `celery` extra (`pip install "django-smsuz[celery]"`).
+Requires the `celery` extra (`pip install "uzsms[celery]"`).
 Calling `uzsms.tasks.send_sms_task` without Celery installed raises
 `SmsConfigurationError` naming the extra; importing the module is always
 safe.

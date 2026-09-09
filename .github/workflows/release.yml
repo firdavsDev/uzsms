@@ -34,7 +34,7 @@ jobs:
         run: |
           version="${{ steps.read.outputs.version }}"
           status=$(curl -sS -o /dev/null -w '%{http_code}' \
-            "https://pypi.org/pypi/django-smsuz/${version}/json")
+            "https://pypi.org/pypi/uzsms/${version}/json")
           if [ "$status" = "404" ]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "$version is not on PyPI -- will publish."
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/django-smsuz
+      url: https://pypi.org/p/uzsms
     steps:
       - uses: actions/download-artifact@v4
         with:

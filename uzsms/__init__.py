@@ -1,4 +1,4 @@
-"""django-smsuz: SMS sending API for Django.
+"""uzsms: SMS sending API for Django.
 
 This module defines the package's public API surface (``__all__``) and
 must stay free of two things: reading ``SMS_SETTINGS`` at import time, and
